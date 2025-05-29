@@ -72,7 +72,9 @@
         power: 100,
         charging: false,
         chargeStart: 0,
-        angle: 0 // direction to mouse
+        angle: 0, // direction to mouse
+        spin: 0, // spin value
+        spinAngle: 0 // for animation
     };
 
     // Game state
@@ -124,6 +126,18 @@
         ctx.moveTo(0, 0);
         ctx.lineTo(player.radius + 10, 0);
         ctx.stroke();
+
+        // Draw spin indicator (rotating line)
+        ctx.save();
+        ctx.rotate(player.spinAngle);
+        ctx.strokeStyle = '#DC143C';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -player.radius + 4);
+        ctx.stroke();
+        ctx.restore();
+
         ctx.restore();
     }
 
@@ -239,8 +253,15 @@
         if (player.charging) {
             let chargeTime = Date.now() - player.chargeStart;
             player.power = Math.min(200, 50 + chargeTime / 10);
+            // Increase spin as you charge
+            player.spin = Math.min(1, chargeTime / 1000);
             document.getElementById('power').textContent = Math.floor(player.power);
+        } else {
+            // Slowly decrease spin when not charging
+            player.spin *= 0.95;
         }
+        // Animate spin indicator
+        player.spinAngle += player.spin * 0.3;
     }
 
     // Throw frisbee
@@ -263,12 +284,13 @@
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             angle: angle,
-            rotationSpeed: 0.3 * power,
+            rotationSpeed: 0.3 * power + player.spin * 0.5, // add player spin to frisbee
             curve: curve
         });
 
         player.power = 100;
         player.charging = false;
+        player.spin = 0; // reset spin after throw
         document.getElementById('power').textContent = player.power;
     }
 
