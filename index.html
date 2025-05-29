@@ -175,6 +175,10 @@
         for (let i = frisbees.length - 1; i >= 0; i--) {
             let frisbee = frisbees[i];
 
+            // Gradually reduce spin and curve
+            frisbee.rotationSpeed *= 0.98; // lose spin
+            frisbee.curve *= 0.98;         // lose curve as spin drops
+
             // Apply curve: rotate velocity vector by a small angle (curve)
             let speed = Math.sqrt(frisbee.vx * frisbee.vx + frisbee.vy * frisbee.vy);
             let currentAngle = Math.atan2(frisbee.vy, frisbee.vx);
