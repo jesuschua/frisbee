@@ -56,333 +56,289 @@
     </div>
 
     <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Set canvas to full window
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
 
-        // Player properties
-        let player = {
-            x: 0,
-            y: 0,
-            z: 0,
-            yaw: 0,    // horizontal rotation
-            pitch: 0,  // vertical rotation
-            speed: 0.5,
-            power: 100,
-            charging: false,
-            chargeStart: 0
-        };
+    // Set canvas to full window
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-        // Game state
-        let frisbees = [];
-        let targets = [];
-        let keys = {};
-        let score = 0;
-        let frisbeeCount = 10;
-        let mouseX = 0;
-        let mouseY = 0;
-        let isMouseLocked = false;
+    // Player properties
+    let player = {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        radius: 20,
+        speed: 4,
+        power: 100,
+        charging: false,
+        chargeStart: 0,
+        angle: 0, // direction to mouse
+        spin: 0, // spin value
+        spinAngle: 0 // for animation
+    };
 
-        // 3D environment
-        const ground = -2;
-        const skyColor = '#87CEEB';
-        const groundColor = '#90EE90';
+    // Game state
+    let frisbees = [];
+    let targets = [];
+    let keys = {};
+    let score = 0;
+    let frisbeeCount = 10;
+    let mouseX = player.x;
+    let mouseY = player.y;
 
-        // Initialize targets
-        function createTargets() {
-            for (let i = 0; i < 5; i++) {
-                targets.push({
-                    x: Math.random() * 40 - 20,
-                    y: Math.random() * 2 - 1,
-                    z: Math.random() * 30 + 10,
-                    radius: 1,
-                    hit: false,
-                    color: '#FF0000'
-                });
-            }
+    // Initialize targets
+    function createTargets() {
+        targets = [];
+        for (let i = 0; i < 5; i++) {
+            let tx = Math.random() * (canvas.width - 100) + 50;
+            let ty = Math.random() * (canvas.height - 100) + 50;
+            targets.push({
+                x: tx,
+                y: ty,
+                radius: 25,
+                hit: false,
+                color: '#FF0000'
+            });
         }
+    }
 
-        // 3D math functions
-        function project3D(x, y, z) {
-            // Translate relative to player
-            let dx = x - player.x;
-            let dy = y - player.y;
-            let dz = z - player.z;
+    // Draw environment
+    function drawEnvironment() {
+        ctx.fillStyle = '#90EE90';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 
-            // Rotate by player yaw
-            let rotX = dx * Math.cos(player.yaw) - dz * Math.sin(player.yaw);
-            let rotZ = dx * Math.sin(player.yaw) + dz * Math.cos(player.yaw);
-            let rotY = dy;
+    // Draw player
+    function drawPlayer() {
+        // Draw player body
+        ctx.save();
+        ctx.translate(player.x, player.y);
+        ctx.rotate(player.angle);
+        ctx.fillStyle = '#4682B4';
+        ctx.beginPath();
+        ctx.arc(0, 0, player.radius, 0, 2 * Math.PI);
+        ctx.fill();
 
-            // Apply pitch rotation
-            let finalY = rotY * Math.cos(player.pitch) - rotZ * Math.sin(player.pitch);
-            let finalZ = rotY * Math.sin(player.pitch) + rotZ * Math.cos(player.pitch);
+        // Draw direction indicator
+        ctx.strokeStyle = '#FFD700';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(player.radius + 10, 0);
+        ctx.stroke();
 
-            if (finalZ <= 0.1) return null; // Behind camera
+        // Draw spin indicator (rotating line)
+        ctx.save();
+        ctx.rotate(player.spinAngle);
+        ctx.strokeStyle = '#DC143C';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -player.radius + 4);
+        ctx.stroke();
+        ctx.restore();
 
-            // Project to screen
-            let scale = canvas.height / finalZ;
-            return {
-                x: canvas.width / 2 + rotX * scale,
-                y: canvas.height / 2 + finalY * scale,
-                scale: scale,
-                distance: finalZ
-            };
-        }
+        ctx.restore();
+    }
 
-        // Draw 3D environment
-        function drawEnvironment() {
-            // Sky gradient
-            let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-            gradient.addColorStop(0, skyColor);
-            gradient.addColorStop(1, '#E0F6FF');
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Draw targets
+    function drawTargets() {
+        targets.forEach(target => {
+            if (target.hit) return;
+            ctx.fillStyle = target.color;
+            ctx.beginPath();
+            ctx.arc(target.x, target.y, target.radius, 0, 2 * Math.PI);
+            ctx.fill();
 
-            // Draw ground
-            ctx.fillStyle = groundColor;
-            let groundProjected = project3D(0, ground, 50);
-            if (groundProjected) {
-                ctx.fillRect(0, groundProjected.y, canvas.width, canvas.height - groundProjected.y);
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(target.x, target.y, target.radius * 0.7, 0, 2 * Math.PI);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(target.x, target.y, target.radius * 0.4, 0, 2 * Math.PI);
+            ctx.stroke();
+        });
+    }
+
+    // Draw frisbees
+    function drawFrisbees() {
+        frisbees.forEach(frisbee => {
+            ctx.save();
+            ctx.translate(frisbee.x, frisbee.y);
+            ctx.rotate(frisbee.angle);
+            ctx.fillStyle = '#FFD700';
+            ctx.beginPath();
+            ctx.arc(0, 0, 12, 0, 2 * Math.PI);
+            ctx.fill();
+
+            // Rotation indicator
+            ctx.strokeStyle = '#DC143C';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-8, 0);
+            ctx.lineTo(8, 0);
+            ctx.stroke();
+            ctx.restore();
+        });
+    }
+
+    // Update frisbee physics
+    function updateFrisbees() {
+        for (let i = frisbees.length - 1; i >= 0; i--) {
+            let frisbee = frisbees[i];
+
+            // Gradually reduce spin and curve
+            frisbee.rotationSpeed *= 0.98; // lose spin
+            frisbee.curve *= 0.98;         // lose curve as spin drops
+
+            // Apply curve: rotate velocity vector by a small angle (curve)
+            let speed = Math.sqrt(frisbee.vx * frisbee.vx + frisbee.vy * frisbee.vy);
+            let currentAngle = Math.atan2(frisbee.vy, frisbee.vx);
+            currentAngle += frisbee.curve;
+            frisbee.vx = Math.cos(currentAngle) * speed;
+            frisbee.vy = Math.sin(currentAngle) * speed;
+
+            frisbee.x += frisbee.vx;
+            frisbee.y += frisbee.vy;
+            frisbee.vx *= 1.0; // air resistance
+            frisbee.vy *= 0.99;
+            frisbee.angle += frisbee.rotationSpeed;
+
+            // Remove frisbees that are out of bounds
+            if (
+                frisbee.x < -20 || frisbee.x > canvas.width + 20 ||
+                frisbee.y < -20 || frisbee.y > canvas.height + 20
+            ) {
+                frisbees.splice(i, 1);
+                continue;
             }
 
-            // Draw grid on ground
-            ctx.strokeStyle = 'rgba(0, 100, 0, 0.3)';
-            ctx.lineWidth = 1;
-            for (let x = -50; x <= 50; x += 5) {
-                let start = project3D(x, ground, 0);
-                let end = project3D(x, ground, 50);
-                if (start && end) {
-                    ctx.beginPath();
-                    ctx.moveTo(start.x, start.y);
-                    ctx.lineTo(end.x, end.y);
-                    ctx.stroke();
-                }
-            }
-            for (let z = 0; z <= 50; z += 5) {
-                let start = project3D(-50, ground, z);
-                let end = project3D(50, ground, z);
-                if (start && end) {
-                    ctx.beginPath();
-                    ctx.moveTo(start.x, start.y);
-                    ctx.lineTo(end.x, end.y);
-                    ctx.stroke();
-                }
-            }
-        }
-
-        // Draw targets
-        function drawTargets() {
+            // Check target collisions
             targets.forEach(target => {
                 if (target.hit) return;
-                
-                let projected = project3D(target.x, target.y, target.z);
-                if (projected) {
-                    let radius = target.radius * projected.scale;
-                    
-                    // Target rings
-                    ctx.fillStyle = target.color;
-                    ctx.beginPath();
-                    ctx.arc(projected.x, projected.y, radius, 0, 2 * Math.PI);
-                    ctx.fill();
-                    
-                    ctx.strokeStyle = 'white';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.arc(projected.x, projected.y, radius * 0.7, 0, 2 * Math.PI);
-                    ctx.stroke();
-                    
-                    ctx.beginPath();
-                    ctx.arc(projected.x, projected.y, radius * 0.4, 0, 2 * Math.PI);
-                    ctx.stroke();
+                let dx = frisbee.x - target.x;
+                let dy = frisbee.y - target.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < target.radius + 12) {
+                    target.hit = true;
+                    score += 100;
+                    document.getElementById('score').textContent = score;
                 }
             });
         }
+    }
 
-        // Draw frisbees
-        function drawFrisbees() {
-            frisbees.forEach((frisbee, index) => {
-                let projected = project3D(frisbee.x, frisbee.y, frisbee.z);
-                if (projected) {
-                    let radius = 0.3 * projected.scale;
-                    
-                    ctx.save();
-                    ctx.translate(projected.x, projected.y);
-                    ctx.rotate(frisbee.rotation);
-                    ctx.scale(1, Math.cos(frisbee.tilt));
-                    
-                    // Frisbee body
-                    let gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-                    gradient.addColorStop(0, '#FFD700');
-                    gradient.addColorStop(0.7, '#FFA500');
-                    gradient.addColorStop(1, '#FF8C00');
-                    
-                    ctx.fillStyle = gradient;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, radius, 0, 2 * Math.PI);
-                    ctx.fill();
-                    
-                    // Rotation indicator
-                    ctx.strokeStyle = '#DC143C';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(-radius * 0.8, 0);
-                    ctx.lineTo(radius * 0.8, 0);
-                    ctx.stroke();
-                    
-                    ctx.restore();
-                }
-                
-                // Remove frisbees that are too far or hit ground
-                if (frisbee.z > 100 || frisbee.y < ground) {
-                    frisbees.splice(index, 1);
-                }
-            });
+    // Handle player movement
+    function updatePlayer() {
+        if (keys['w'] || keys['W'] || keys['ArrowUp']) {
+            player.y -= player.speed;
+        }
+        if (keys['s'] || keys['S'] || keys['ArrowDown']) {
+            player.y += player.speed;
+        }
+        if (keys['a'] || keys['A'] || keys['ArrowLeft']) {
+            player.x -= player.speed;
+        }
+        if (keys['d'] || keys['D'] || keys['ArrowRight']) {
+            player.x += player.speed;
         }
 
-        // Update frisbee physics
-        function updateFrisbees() {
-            frisbees.forEach(frisbee => {
-                frisbee.x += frisbee.velocityX;
-                frisbee.y += frisbee.velocityY;
-                frisbee.z += frisbee.velocityZ;
-                
-                // Physics
-                frisbee.velocityY -= 0.02; // gravity
-                frisbee.velocityX *= 0.995; // air resistance
-                frisbee.velocityZ *= 0.995;
-                
-                // Rotation
-                frisbee.rotation += frisbee.rotationSpeed;
-                frisbee.tilt += frisbee.tiltSpeed;
-                frisbee.tiltSpeed *= 0.98;
-                
-                // Check target collisions
-                targets.forEach(target => {
-                    if (target.hit) return;
-                    let dx = frisbee.x - target.x;
-                    let dy = frisbee.y - target.y;
-                    let dz = frisbee.z - target.z;
-                    let distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                    
-                    if (distance < target.radius + 0.3) {
-                        target.hit = true;
-                        score += 100;
-                        document.getElementById('score').textContent = score;
-                    }
-                });
-            });
+        // Clamp player to canvas
+        player.x = Math.max(player.radius, Math.min(canvas.width - player.radius, player.x));
+        player.y = Math.max(player.radius, Math.min(canvas.height - player.radius, player.y));
+
+        // Update power charging
+        if (player.charging) {
+            let chargeTime = Date.now() - player.chargeStart;
+            player.power = Math.min(200, 50 + chargeTime / 10);
+            // Increase spin as you charge
+            player.spin = Math.min(1, chargeTime / 1000);
+            document.getElementById('power').textContent = Math.floor(player.power);
+        } else {
+            // Slowly decrease spin when not charging
+            player.spin *= 0.95;
         }
+        // Animate spin indicator
+        player.spinAngle += player.spin * 0.3;
+    }
 
-        // Handle player movement
-        function updatePlayer() {
-            if (keys['w'] || keys['W']) {
-                player.x += Math.sin(player.yaw) * player.speed;
-                player.z += Math.cos(player.yaw) * player.speed;
-            }
-            if (keys['s'] || keys['S']) {
-                player.x -= Math.sin(player.yaw) * player.speed;
-                player.z -= Math.cos(player.yaw) * player.speed;
-            }
-            if (keys['a'] || keys['A']) {
-                player.x -= Math.cos(player.yaw) * player.speed;
-                player.z += Math.sin(player.yaw) * player.speed;
-            }
-            if (keys['d'] || keys['D']) {
-                player.x += Math.cos(player.yaw) * player.speed;
-                player.z -= Math.sin(player.yaw) * player.speed;
-            }
-            
-            // Update power charging
-            if (player.charging) {
-                let chargeTime = Date.now() - player.chargeStart;
-                player.power = Math.min(200, 50 + chargeTime / 10);
-                document.getElementById('power').textContent = Math.floor(player.power);
-            }
+    // Throw frisbee
+    function throwFrisbee() {
+        if (frisbeeCount <= 0) return;
+
+        frisbeeCount--;
+        document.getElementById('frisbeeCount').textContent = frisbeeCount;
+
+        let power = player.power / 100;
+        let angle = player.angle;
+        let speed = 10 * power;
+
+        // Add a random curve between -0.03 and 0.03 radians per frame
+        let curve = (Math.random() - 0.5) * 0.06;
+
+        frisbees.push({
+            x: player.x + Math.cos(angle) * (player.radius + 15),
+            y: player.y + Math.sin(angle) * (player.radius + 15),
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            angle: angle,
+            rotationSpeed: 0.3 * power + player.spin * 0.5, // add player spin to frisbee
+            curve: curve
+        });
+
+        player.power = 100;
+        player.charging = false;
+        player.spin = 0; // reset spin after throw
+        document.getElementById('power').textContent = player.power;
+    }
+
+    // Event listeners
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
+
+    canvas.addEventListener('mousedown', e => {
+        player.charging = true;
+        player.chargeStart = Date.now();
+    });
+
+    canvas.addEventListener('mouseup', e => {
+        if (player.charging) {
+            throwFrisbee();
         }
+    });
 
-        // Throw frisbee
-        function throwFrisbee() {
-            if (frisbeeCount <= 0) return;
-            
-            frisbeeCount--;
-            document.getElementById('frisbeeCount').textContent = frisbeeCount;
-            
-            let power = player.power / 100;
-            
-            frisbees.push({
-                x: player.x,
-                y: player.y,
-                z: player.z,
-                velocityX: Math.sin(player.yaw) * Math.cos(player.pitch) * power * 0.3,
-                velocityY: Math.sin(player.pitch) * power * 0.3,
-                velocityZ: Math.cos(player.yaw) * Math.cos(player.pitch) * power * 0.3,
-                rotation: 0,
-                rotationSpeed: power * 0.2,
-                tilt: 0,
-                tiltSpeed: Math.random() * 0.1 - 0.05
-            });
-            
-            player.power = 100;
-            player.charging = false;
-            document.getElementById('power').textContent = player.power;
-        }
+    canvas.addEventListener('mousemove', e => {
+        const rect = canvas.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+        player.angle = Math.atan2(mouseY - player.y, mouseX - player.x);
+    });
 
-        // Event listeners
-        window.addEventListener('keydown', e => keys[e.key] = true);
-        window.addEventListener('keyup', e => keys[e.key] = false);
+    // Resize handler
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        // Optionally reposition player/targets here
+    });
 
-        canvas.addEventListener('mousedown', e => {
-            if (!isMouseLocked) {
-                canvas.requestPointerLock();
-            } else {
-                player.charging = true;
-                player.chargeStart = Date.now();
-            }
-        });
+    // Game loop
+    function gameLoop() {
+        updatePlayer();
+        updateFrisbees();
 
-        canvas.addEventListener('mouseup', e => {
-            if (player.charging) {
-                throwFrisbee();
-            }
-        });
+        drawEnvironment();
+        drawTargets();
+        drawPlayer();
+        drawFrisbees();
 
-        document.addEventListener('pointerlockchange', () => {
-            isMouseLocked = document.pointerLockElement === canvas;
-        });
+        requestAnimationFrame(gameLoop);
+    }
 
-        document.addEventListener('mousemove', e => {
-            if (isMouseLocked) {
-                player.yaw += e.movementX * 0.003;
-                player.pitch += e.movementY * 0.003;
-                player.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, player.pitch));
-            }
-        });
-
-        // Resize handler
-        window.addEventListener('resize', () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        });
-
-        // Game loop
-        function gameLoop() {
-            updatePlayer();
-            updateFrisbees();
-            
-            drawEnvironment();
-            drawTargets();
-            drawFrisbees();
-            
-            requestAnimationFrame(gameLoop);
-        }
-
-        // Initialize and start
-        createTargets();
-        gameLoop();
+    // Initialize and start
+    createTargets();
+    gameLoop();
     </script>
 </body>
 </html>
